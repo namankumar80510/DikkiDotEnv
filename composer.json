@@ -1,0 +1,21 @@
+{
+    "name": "dikki/dotenv",
+    "description": "Just another dotenv library for PHP ripped-off from CodeIgniter 4",
+    "keywords": ["dotenv"],
+    "homepage": "https://dikki.website/components/dotenv",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Naman Kumar",
+            "email": "namankumar80510@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "8.0 - 8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Dikki\\DotEnv\\": "src/"
+        }
+    }
+}
