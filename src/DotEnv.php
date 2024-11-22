@@ -1,66 +1,124 @@
 <?php
 
-/**
- * Dikki\DotEnv\DotEnv class
- *
- * This file was a part of CodeIgniter 4 framework.
- * It was decoupled from the framework and turned it into a standalone component.
- */
+declare(strict_types=1);
 
 namespace Dikki\DotEnv;
 
 use InvalidArgumentException;
 
 /**
- * Environment-specific configuration
+ * Environment-specific configuration;
+ * 
+ * base class was taken from CodeIgniter4 DotEnv class.
  */
 class DotEnv
 {
     /**
-     * The directory where the .env file can be located.
+     * The directory where the .env files can be located.
      *
      * @var string
      */
-    protected string $path;
+    protected string $directory;
 
     /**
-     * Builds the path to our file.
+     * List of .env files to load
+     * 
+     * @var array<string>
      */
-    public function __construct(string $path, string $file = '.env')
+    protected array $files = ['.env', '.env.local'];
+
+    private static array $cache = [];
+    private static array $loaded = [];
+    private static array $lastModified = [];
+
+    /**
+     * Builds the path to our files.
+     */
+    public function __construct(string $directory, array|string $files = [])
     {
-        $this->path = rtrim($path, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $file;
+        $this->directory = rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        
+        if (!empty($files)) {
+            $this->files = is_array($files) ? $files : [$files];
+        }
     }
 
     /**
-     * The main entry point will load the .env file and process it
+     * The main entry point will load the .env files and process them
      * so that we end up with all settings in the PHP environment vars
      * (i.e. getenv(), $_ENV, and $_SERVER)
      */
     public function load(): bool
     {
-        $vars = $this->parse();
+        $loaded = false;
 
-        return $vars !== null;
+        foreach ($this->files as $file) {
+            $path = $this->directory . $file;
+            
+            if (!file_exists($path)) {
+                continue;
+            }
+
+            if ($this->isCacheValid($path)) {
+                $loaded = true;
+                continue;
+            }
+
+            $vars = $this->parse($path);
+            static::$loaded[$path] = true;
+            static::$lastModified[$path] = filemtime($path);
+
+            if ($vars !== null) {
+                $loaded = true;
+            }
+        }
+
+        return $loaded;
+    }
+
+    private function isCacheValid(string $path): bool
+    {
+        if (!isset(static::$loaded[$path])) {
+            return false;
+        }
+
+        if (!file_exists($path)) {
+            return false;
+        }
+
+        $currentMtime = filemtime($path);
+        $lastMtime = static::$lastModified[$path] ?? 0;
+
+        if ($currentMtime > $lastMtime) {
+            unset(static::$cache[$path]);
+            unset(static::$loaded[$path]);
+            return false;
+        }
+
+        return true;
     }
 
     /**
      * Parse the .env file into an array of key => value
      */
-    public function parse(): ?array
+    public function parse(string $path): ?array
     {
-        // We don't want to enforce the presence of a .env file, they should be optional.
-        if (!is_file($this->path)) {
+        if ($this->isCacheValid($path) && isset(static::$cache[$path])) {
+            return static::$cache[$path];
+        }
+
+        if (!is_file($path)) {
+            static::$cache[$path] = null;
             return null;
         }
 
-        // Ensure the file is readable
-        if (!is_readable($this->path)) {
-            throw new InvalidArgumentException("The .env file is not readable: $this->path");
+        if (!is_readable($path)) {
+            throw new InvalidArgumentException("The .env file is not readable: $path");
         }
 
         $vars = [];
 
-        $lines = file($this->path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
         foreach ($lines as $line) {
             // Is it a comment?
@@ -76,6 +134,8 @@ class DotEnv
             }
         }
 
+        static::$cache[$path] = $vars;
+        static::$lastModified[$path] = filemtime($path);
         return $vars;
     }
 
